@@ -114,8 +114,8 @@
 
     converse.log = function (txt, level) {
         var logger;
-        if (typeof console === "undefined" || typeof console.log === "undefined") {
-            logger = { log: function () {}, error: function () {} };
+        if (_.isUndefined(console) || _.isUndefined(console.log)) {
+            logger = { log: _.noop, error: _.noop };
         } else {
             logger = console;
         }
@@ -131,11 +131,11 @@
 
     converse.initialize = function (settings, callback) {
         "use strict";
-        settings = typeof settings !== "undefined" ? settings : {};
+        settings = !_.isUndefined(settings) ? settings : {};
         var init_deferred = new $.Deferred();
         var converse = this;
 
-        if (typeof converse.chatboxes !== 'undefined') {
+        if (!_.isUndefined(converse.chatboxes)) {
             // Looks like converse.initialized was called again without logging
             // out or disconnecting in the previous session.
             // This happens in tests.
@@ -186,8 +186,8 @@
 
         // Detect support for the user's locale
         // ------------------------------------
-        var locales = typeof locales === "undefined" ? {} : locales;
-        this.isConverseLocale = function (locale) { return typeof locales[locale] !== "undefined"; };
+        var locales = _.isUndefined(locales) ? {} : locales;
+        this.isConverseLocale = function (locale) { return !_.isUndefined(locales[locale]); };
         this.isMomentLocale = function (locale) { return moment.locale() !== moment.locale(locale); };
         if (!moment.locale) { //moment.lang is deprecated after 2.8.1, use moment.locale instead
             moment.locale = moment.lang;
@@ -243,7 +243,7 @@
         };
         _.assignIn(this, this.default_settings);
         // Allow only whitelisted configuration attributes to be overwritten
-        _.assignIn(this, _.pick(settings, Object.keys(this.default_settings)));
+        _.assignIn(this, _.pick(settings, _.keys(this.default_settings)));
 
         // BBB
         if (this.prebind === true) { this.authentication = converse.PREBIND; }
@@ -260,7 +260,7 @@
 
         // Module-level variables
         // ----------------------
-        this.callback = callback || function () {};
+        this.callback = callback || _.noop;
         /* When reloading the page:
          * For new sessions, we need to send out a presence stanza to notify
          * the server/network that we're online.
@@ -295,11 +295,14 @@
         };
 
         this.sendCSI = function (stat) {
-            /* Send out a Chat Status Notification (XEP-0352) */
-            if (converse.features[Strophe.NS.CSI] || true) {
-                converse.connection.send($build(stat, {xmlns: Strophe.NS.CSI}));
-                converse.inactive = (stat === converse.INACTIVE) ? true : false;
-            }
+            /* Send out a Chat Status Notification (XEP-0352)
+             *
+             * Parameters:
+             *  (String) stat: The user's chat status
+             */
+            // XXX if (converse.features[Strophe.NS.CSI] || true) {
+            converse.connection.send($build(stat, {xmlns: Strophe.NS.CSI}));
+            converse.inactive = (stat === converse.INACTIVE) ? true : false;
         };
 
         this.onUserActivity = function () {
@@ -395,7 +398,7 @@
         };
 
 
-        this.reconnect = _.debounce(function (condition) {
+        this.reconnect = _.debounce(function () {
             converse.log('The connection has dropped, attempting to reconnect.');
             converse.giveFeedback(
                 __("Reconnecting"),
@@ -435,7 +438,7 @@
         };
 
         this.setDisconnectionCause = function (connection_status) {
-            if (typeof converse.disconnection_cause === "undefined") {
+            if (_.isUndefined(converse.disconnection_cause)) {
                 converse.disconnection_cause = connection_status;
             }
         };
@@ -541,7 +544,7 @@
         this.logOut = function () {
             converse.chatboxviews.closeAllChatBoxes();
             converse.disconnection_cause = converse.LOGOUT;
-            if (typeof converse.connection !== 'undefined') {
+            if (!_.isUndefined(converse.connection)) {
                 converse.connection.disconnect();
                 converse.connection.reset();
             }
@@ -653,7 +656,7 @@
         };
 
         this.unregisterPresenceHandler = function () {
-            if (typeof converse.presence_ref !== 'undefined') {
+            if (!_.isUndefined(converse.presence_ref)) {
                 converse.connection.deleteHandler(converse.presence_ref);
                 delete converse.presence_ref;
             }
@@ -742,7 +745,7 @@
 
         this.RosterContact = Backbone.Model.extend({
 
-            initialize: function (attributes, options) {
+            initialize: function (attributes) {
                 var jid = attributes.jid;
                 var bare_jid = Strophe.getBareJidFromJid(jid);
                 var resource = Strophe.getResourceFromJid(jid);
@@ -798,7 +801,7 @@
                 }));
             },
 
-            ackUnsubscribe: function (jid) {
+            ackUnsubscribe: function () {
                 /* Upon receiving the presence stanza of type "unsubscribed",
                  * the user SHOULD acknowledge receipt of that subscription state
                  * notification by sending a presence stanza of type "unsubscribe"
@@ -913,7 +916,7 @@
             },
 
             subscribeToSuggestedItems: function (msg) {
-                $(msg).find('item').each(function (i, items) {
+                $(msg).find('item').each(function () {
                     if (this.getAttribute('action') === 'add') {
                         converse.roster.addAndSubscribe(
                                 this.getAttribute('jid'), null, converse.xmppstatus.get('fullname'));
@@ -958,7 +961,7 @@
                 var iq = $iq({type: 'set'})
                     .c('query', {xmlns: Strophe.NS.ROSTER})
                     .c('item', { jid: jid, name: name });
-                _.map(groups, function (group) { iq.c('group').t(group).up(); });
+                _.each(groups, function (group) { iq.c('group').t(group).up(); });
                 converse.connection.sendIQ(iq, callback, errback);
             },
 
@@ -978,7 +981,7 @@
                 groups = groups || [];
                 name = _.isEmpty(name)? jid: name;
                 this.sendContactAddIQ(jid, name, groups,
-                    function (iq) {
+                    function () {
                         var contact = this.create(_.assignIn({
                             ask: undefined,
                             fullname: name,
@@ -1004,7 +1007,7 @@
                 if (item) {
                     resources = item.get('resources');
                     if (resources) {
-                        if (_.indexOf(resources, resource) === -1) {
+                        if (!_.includes(resources, resource)) {
                             resources.push(resource);
                             item.set({'resources': resources});
                         }
@@ -1038,7 +1041,7 @@
                     ignored = _.union(ignored, ['dnd', 'xa', 'away']);
                 }
                 for (i=0; i<models_length; i++) {
-                    if (_.indexOf(ignored, models[i].get('chat_status')) === -1) {
+                    if (!_.includes(ignored, models[i].get('chat_status'))) {
                         count++;
                     }
                 }
@@ -1101,13 +1104,10 @@
                  */
                 var jid = item.getAttribute('jid');
                 if (this.isSelf(jid)) { return; }
-                var groups = [],
+                var groups = _.map(item.getElementsByTagName('group'), Strophe.getText),
                     contact = this.get(jid),
                     ask = item.getAttribute("ask"),
                     subscription = item.getAttribute("subscription");
-                $.map(item.getElementsByTagName('group'), function (group) {
-                    groups.push(Strophe.getText(group));
-                });
                 if (!contact) {
                     if ((subscription === "none" && ask === null) || (subscription === "remove")) {
                         return; // We're lazy when adding contacts.
@@ -1239,7 +1239,7 @@
 
 
         this.RosterGroup = Backbone.Model.extend({
-            initialize: function (attributes, options) {
+            initialize: function (attributes) {
                 this.set(_.assignIn({
                     description: DESC_GROUP_TOGGLE,
                     state: converse.OPENED
@@ -1354,7 +1354,7 @@
                 };
             },
 
-            createMessage: function ($message, $delay, original_stanza) {
+            createMessage: function () {
                 return this.messages.create(this.getMessageAttributes.apply(this, arguments));
             }
         });
@@ -1594,8 +1594,8 @@
 
             constructPresence: function (type, status_message) {
                 var presence;
-                type = typeof type === 'string' ? type : (this.get('status') || converse.default_state);
-                status_message = typeof status_message === 'string' ? status_message : undefined;
+                type = _.isString(type) ? type : (this.get('status') || converse.default_state);
+                status_message = _.isString(status_message) ? status_message : undefined;
                 // Most of these presence types are actually not explicitly sent,
                 // but I add all of them here for reference and future proofing.
                 if ((type === 'unavailable') ||
